@@ -1,0 +1,36 @@
+name: Deploy to Staging
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      - name: Authenticate to Kubernetes
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_STAGING }}" > kubeconfig
+          export KUBECONFIG=$PWD/kubeconfig
+      - name: Deploy all Helm charts
+        run: |
+          for chart in helm-charts/*/; do
+            if [ -f "$chart/Chart.yaml" ]; then
+              name=$(basename $chart)
+              helm upgrade --install $name $chart \
+                --namespace staging \
+                --values helm-charts/values.global.yaml \
+                --wait
+            fi
+          done
+      - name: Smoke-test
+        run: |
+          curl --fail https://api.staging.${{ env.DOMAIN }}/health
